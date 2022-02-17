@@ -16,7 +16,7 @@ Now your virtual machine should be set up with USB 3.0 capabilities. But in orde
  3. Click "create USB filter", edit the filter and enter the following
  `Vendor ID: 03e7`
  `Product ID: 2485`
- 4.  Click "create USB filter again", edit the filter and enter the following
+ 4.  Click "create USB filter" again, edit the filter and enter the following
  `Vendor ID: 03e7`
  `Product ID: f63b`
  5. Set the drivers to USB 3.0
@@ -35,7 +35,7 @@ At this point, all of the demos in
 Should work and run on `MYRIAD`
 
 ## 3) Running custom models on the Neural Compute Stick 2
-Follow this aptly named guide: [The battle to run my custom network on a Movidius / Myriad Compute Stick](https://medium.com/analytics-vidhya/the-battle-to-run-my-custom-network-on-a-movidius-myriad-compute-stick-c7c01fb64126)
+Follow this well named guide: [The battle to run my custom network on a Movidius / Myriad Compute Stick](https://medium.com/analytics-vidhya/the-battle-to-run-my-custom-network-on-a-movidius-myriad-compute-stick-c7c01fb64126)
 Or use the code provided in this repo
 
 For keras2onnx we must use Tensorflow 2.2.0
