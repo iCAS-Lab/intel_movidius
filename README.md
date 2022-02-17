@@ -69,3 +69,29 @@ model.fit(x_train, y_train, epochs=1)
 
 model.evaluate(x_test,  y_test, verbose=2)
 ```
+   2. Create a directory called "onnx_model"
+   3. Convert your model to onnx format
+```
+import keras2onnx
+import onnx
+onnx_model = keras2onnx.convert_keras(model, model.name)
+onnx.save_model(onnx_model, 'onnx_model/keras_mnist_model.onnx')
+```
+   4. Edit the `convert.sh` file
+   5. Change `PATH_TO_OPENVINO=path/to/your/openvino`
+   6. Save the convert.sh file
+   7. Run the convert.sh with the following command
+   ```
+   ./convert.sh path/to/onnx_model.onnx [input_shape]
+   ```
+   Example:
+   ```
+   ./convert.sh onnx_model/keras_mnist_model.onnx [1,28,28]
+   ```
+   8. Run the "run_on_movidius.py" program
+
+If all goes well you will see your models accuracy!
+```
+Input Shape: [1, 28, 28]
+Test accuracy: 0.957
+```
