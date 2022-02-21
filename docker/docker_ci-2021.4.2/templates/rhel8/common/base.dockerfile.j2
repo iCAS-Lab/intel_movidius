@@ -1,0 +1,149 @@
+# Copyright (C) 2019-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+{%- if 'docker' == rhel_platform %}
+FROM registry.access.redhat.com/ubi8:8.4 AS base
+{% else %}
+FROM registry.access.redhat.com/ubi8:8.4
+
+LABEL name="rhel8_{{ distribution }}" \
+      maintainer="openvino_docker@intel.com" \
+      vendor="Intel Corporation" \
+      version="{{ product_version }}" \
+      release="{{ product_version }}" \
+      summary="Provides the latest release of Intel(R) Distribution of OpenVINO(TM) toolkit." \
+      description="This is the {{ distribution }} image for Intel(R) Distribution of OpenVINO(TM) toolkit on RHEL UBI 8"
+{% endif -%}
+
+# hadolint ignore=DL3002
+USER root
+{% if 'openshift' == rhel_platform %}
+COPY entitlement.pem /etc/pki/entitlement
+COPY entitlement-key.pem /etc/pki/entitlement
+COPY ./rhsm-conf /etc/rhsm
+COPY ./rhsm-ca /etc/rhsm/ca
+{% endif %}
+WORKDIR /
+
+SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
+
+{% if 'docker' == rhel_platform %}
+ARG SUBSCRIPTION_ORG=
+ARG SUBSCRIPTION_KEY=
+
+RUN subscription-manager register --org=$SUBSCRIPTION_ORG --activationkey=$SUBSCRIPTION_KEY && subscription-manager attach && \
+    subscription-manager release --set="$(cat /etc/*release | grep VERSION_ID | cut -f2 -d'"')"
+{% endif %}
+
+{% for pre_command in pre_commands %}
+{{ pre_command|safe }}
+{% endfor %}
+RUN rm -rf ${INTEL_OPENVINO_DIR}/.distribution && mkdir ${INTEL_OPENVINO_DIR}/.distribution && \
+    touch ${INTEL_OPENVINO_DIR}/.distribution/docker
+
+{% if 'docker' == rhel_platform %}
+# -----------------
+FROM registry.access.redhat.com/ubi8:8.4 AS ov_base
+
+LABEL name="rhel8_{{ distribution }}" \
+      maintainer="openvino_docker@intel.com" \
+      vendor="Intel Corporation" \
+      version="{{ product_version }}" \
+      release="{{ product_version }}" \
+      summary="Provides the latest release of Intel(R) Distribution of OpenVINO(TM) toolkit." \
+      description="This is the {{ distribution }} image for Intel(R) Distribution of OpenVINO(TM) toolkit on RHEL UBI 8"
+
+WORKDIR /
+USER root
+
+SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
+
+ARG SUBSCRIPTION_ORG=
+ARG SUBSCRIPTION_KEY=
+
+RUN subscription-manager register --org=$SUBSCRIPTION_ORG --activationkey=$SUBSCRIPTION_KEY && subscription-manager attach && \
+    subscription-manager release --set="$(cat /etc/*release | grep VERSION_ID | cut -f2 -d'"')"
+{% endif %}
+
+# Creating user openvino and adding it to groups "video" and "users" to use GPU and VPU
+RUN useradd -ms /bin/bash -G video,users openvino && \
+    chown openvino -R /home/openvino
+
+{% if 'docker' == rhel_platform %}
+RUN mkdir /opt/intel
+
+ENV INTEL_OPENVINO_DIR /opt/intel/openvino
+
+COPY --from=base /opt/intel /opt/intel
+{% endif %}
+
+{% if 'runtime' == distribution %}
+ARG LGPL_DEPS="gcc-c++"
+ARG INSTALL_PACKAGES="-c=opencv_req -c=python -c=opencv_opt"
+{% else %}
+ARG LGPL_DEPS="gcc-c++ \
+               glibc \
+               libstdc++ \
+               libgcc"
+ARG INSTALL_PACKAGES="-c=opencv_req -c=python -c=opencv_opt"
+{% endif %}
+ARG INSTALL_SOURCES="no"
+
+WORKDIR /thirdparty
+# hadolint ignore=DL3031, DL3033, SC2012
+{% if 'openshift' == rhel_platform -%}
+RUN rm /etc/rhsm-host && yum update -y --excludepkgs redhat-release && rpm -qa --qf "%{name}\n" > base_packages.txt && \
+{%- else -%}
+RUN yum update -y --excludepkgs redhat-release && rpm -qa --qf "%{name}\n" > base_packages.txt && \
+{%- endif %}
+	yum install -y ${LGPL_DEPS} && \
+	${INTEL_OPENVINO_DIR}/install_dependencies/install_openvino_dependencies.sh -y $INSTALL_PACKAGES && \
+	if [ "$INSTALL_SOURCES" = "yes" ]; then \
+	    yum install -y yum-utils && \
+		rpm -qa --qf "%{name}\n" > all_packages.txt && \
+		grep -v -f base_packages.txt all_packages.txt | while read line; do \
+		package=$(echo $line); \
+		rpm -qa $package --qf "%{name}: %{license}\n" | grep GPL; \
+		exit_status=$?; \
+		if [ $exit_status -eq 0 ]; then \
+		    yumdownloader --skip-broken --source -y $package;  \
+		fi \
+	  done && \
+	  yum autoremove -y yum-utils && \
+      echo "Download source for $(ls | wc -l) third-party packages: $(du -sh)"; fi && \
+	yum clean all && rm -rf /var/cache/yum
+
+WORKDIR ${INTEL_OPENVINO_DIR}/licensing
+RUN if [ "$INSTALL_SOURCES" = "no" ]; then \
+        echo "This image doesn't contain source for 3d party components under LGPL/GPL licenses. Please use tag <YYYY.U_src> to pull the image with downloaded sources." > DockerImage_readme.txt ; \
+    fi
+
+WORKDIR /licenses
+RUN cp -rf "${INTEL_OPENVINO_DIR}"/licensing /licenses
+
+{% for command in commands %}
+{{ command|safe }}
+{% endfor %}
+
+# Post-installation cleanup and setting up OpenVINO environment variables
+{% if 'docker' == rhel_platform  %}
+RUN rm -rf /tmp && mkdir /tmp && subscription-manager unregister
+{% elif 'openshift' == rhel_platform %}
+RUN rm -rf /tmp && mkdir /tmp && rm -rf /etc/pki/entitlement && rm -rf /etc/rhsm
+{% else %}
+RUN rm -rf /tmp && mkdir /tmp
+{% endif %}
+RUN if [ -f "${INTEL_OPENVINO_DIR}"/bin/setupvars.sh ]; then \
+        printf "\nexport TBB_DIR=\${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/cmake\n" >> ${INTEL_OPENVINO_DIR}/bin/setupvars.sh; \
+        printf "\nsource \${INTEL_OPENVINO_DIR}/bin/setupvars.sh\n" >> /home/openvino/.bashrc; \
+        printf "\nsource \${INTEL_OPENVINO_DIR}/bin/setupvars.sh\n" >> /root/.bashrc; \
+    fi;
+
+USER openvino
+WORKDIR ${INTEL_OPENVINO_DIR}
+
+CMD ["/bin/bash"]
+
+# Setup custom layers below
+{% for layer in layers %}
+{{ layer|safe }}
+{% endfor %}

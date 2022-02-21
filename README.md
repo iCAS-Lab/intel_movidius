@@ -1,97 +1,69 @@
-# Using the Neural Compute Stick 2
-## 1) Setting up virtual environment
-In order to get the Neural Compute Stick 2 working, it is strongly recommended that you use a fresh install of Ubuntu on a virtual environment. (I couldn't get Movidius working on my main machine even with Ubuntu). 
+# Intel Neural Compute Stick 2 Docker Instructions
+This guide describes how to get up and running with the OpenVINO toolkit using docker.
+---
 
- 1. Download VirtualBox on your host machine
-`sudo apt-get install virtualbox`
- 2. Download Ubuntu disk image found [here](https://ubuntu.com/download/desktop) (I'm using Ubuntu 20.04.3 LTS) 
- 3. Install and set up Ubuntu on a VirtualBox machine (you can follow this [guide](https://brb.nci.nih.gov/seqtools/installUbuntu.html) for help)
- 4. Shutdown the virtual machine
- 5. Install the VirtualBox expansion pack for your version of VirtualBox so we can use USB 3.0 drivers (you can follow this [guide](https://www.nakivo.com/blog/how-to-install-virtualbox-extension-pack/#:~:text=Open%20Launchpad,%20run%20VirtualBox,%20then,VirtualBox%20site%20%28Oracle_VM_VirtualBox_Extension_Pack-6.0.))
+## Installing Docker
+Use the instructions from Docker's official documentation to install docker on your computer.
 
-Now your virtual machine should be set up with USB 3.0 capabilities. But in order for the virtual machine to "see" the Neural Compute Stick 2, we must configure the VirtualMachine.
+Ubuntu:  
+https://docs.docker.com/engine/install/ubuntu/
 
- 1. In VirtualBox select the virtual machine you have created and click "settings"
- 2. Click on "USB"
- 3. Click "create USB filter", edit the filter and enter the following
- `Vendor ID: 03e7`
- `Product ID: 2485`
- 4.  Click "create USB filter" again, edit the filter and enter the following
- `Vendor ID: 03e7`
- `Product ID: f63b`
- 5. Set the drivers to USB 3.0
- 6. Start your virtual machine, and type `lsusb`in the terminal
- 7. Make sure you see `ID 03e7:2485 Intel Movidius MyriadX`in the output
+All other OS's:  
+https://docs.docker.com/get-docker/
 
-## 2) Setting up OpenVino on the virtual machine
+Be sure to run `sudo docker run hello-world` to be sure your docker install was successful.
 
-Follow the getting started guide on Intels website ([here](https://www.intel.com/content/www/us/en/developer/articles/guide/get-started-with-neural-compute-stick.html))
+***Note: You may need to use `sudo docker` to elevate permission on some OS's***
 
-If you have an error with PyYAML, enter the following
-`sudo -H pip3 install --ignore-installed PyYAML`
+---
 
-At this point, all of the demos in
-`~/intel/openvino_2021/deployment_tools/demo`
-Should work and run on `MYRIAD`
+## Downloading OpenVINO
+The docker images for OpenVINO are located:  
+https://hub.docker.com/u/openvino
 
-## 3) Running custom models on the Neural Compute Stick 2
-Follow this well named guide: [The battle to run my custom network on a Movidius / Myriad Compute Stick](https://medium.com/analytics-vidhya/the-battle-to-run-my-custom-network-on-a-movidius-myriad-compute-stick-c7c01fb64126)
-Or use the code provided in this repo
+Use:  
+`docker pull openvino/ubuntu20_data_dev:latest`
 
-For keras2onnx we must use Tensorflow 2.2.0
-`pip3 install tensorflow==2.2.0`
+This command will pull the image from docker hub to your local machine.
 
-   1.Create your model
-```
-import tensorflow as tf
-print("TensorFlow version:", tf.__version__)
+---
 
-mnist = tf.keras.datasets.mnist
+## Using the container
 
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-x_train, x_test = x_train / 255.0, x_test / 255.0
+To run the container the first time run:  
+`docker run -it --rm openvino/ubuntu20_data_dev:latest`
 
-model = tf.keras.models.Sequential([
-  tf.keras.layers.Flatten(input_shape=(28, 28)),
-  tf.keras.layers.Dense(128, activation='relu'),
-  tf.keras.layers.Dense(128, activation='relu'),
-  tf.keras.layers.Dropout(0.5),
-  tf.keras.layers.Dense(10)
-])
+This command will enter you into a bash terminal. You should see that your terminal's prompt says `openvino@<hostname>:<path>$`. If you see this you have successfully ran the container and the container has launched an interactive bash terminal.
 
-loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+You will notice that by default the container enters you into `/opt/intel/openvino_<year>.<version>/`. This is where the OpenVINO install is located.
 
-model.compile(optimizer='adam',
-              loss=loss_fn,
-              metrics=['accuracy'])
+To pass in the device you simply need to pass in the device inside of the `docker run` command:
 
-model.fit(x_train, y_train, epochs=1)
+*For example*:
 
-model.evaluate(x_test,  y_test, verbose=2)
-```
-   2. Create a directory called "onnx_model"
-   3. Convert your model to onnx format
-```
-import keras2onnx
-import onnx
-onnx_model = keras2onnx.convert_keras(model, model.name)
-onnx.save_model(onnx_model, 'onnx_model/keras_mnist_model.onnx')
-```
-   4. Edit the `convert.sh` file
-   5. Change `PATH_TO_OPENVINO=path/to/your/openvino`
-   6. Save the convert.sh file
-   7. Run the convert.sh with the following command
-   ```
-   ./convert.sh path/to/onnx_model.onnx [input_shape]
-   ```
-   Example:
-   ```
-   ./convert.sh onnx_model/keras_mnist_model.onnx [1,28,28]
-   ```
-   8. Run the "run_on_movidius.py" program
+Use:
+`docker run -it --device /dev/dri:/dev/dri --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb openvino/ubuntu20_data_dev:latest`  
+to run the container and pass in the Intel NCS2.
 
-If all goes well you will see your models accuracy!
-```
-Input Shape: [1, 28, 28]
-Test accuracy: 0.957
-```
+***Note: Using the `--rm` flag when running the container deletes the container after exiting the run.***
+
+Source: https://hub.docker.com/r/openvino/ubuntu20_data_dev
+
+---
+
+## Test the OpenVINO Container
+The following link downloads the GoogleNet-v1, optimizes it, and runs it on the Intel NCS2.
+
+1. `cd /opt/intel/openvino_2021.*/deployment_tools/open_model_zoo/tools/downloader`
+
+2. `python3 downloader.py --name googlenet-v1 -o ~`
+
+3. `python3 /opt/intel/openvino_2021.*/deployment_tools/model_optimizer/mo.py --input_model ~/public/googlenet-v1/googlenet-v1.caffemodel --data_type FP32 --output_dir ~`
+
+4. `python3 benchmark_app.py -m ~/googlenet-v1.xml -d MYRIAD -api async -i /opt/intel/openvino_2021.*/deployment_tools/demo/car.png -b 1`
+
+***NOTE: You will see some long waiting or pinging messages. The model is running on the stick, you may just have to wait.***
+
+Source: https://docs.openvino.ai/latest/openvino_inference_engine_tools_benchmark_tool_README.html
+
+---

@@ -1,0 +1,191 @@
+# Copyright (C) 2019-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+FROM ubuntu:18.04 AS base
+
+# hadolint ignore=DL3002
+USER root
+WORKDIR /
+
+SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# hadolint ignore=DL3008
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl tzdata ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+{% for pre_command in pre_commands %}
+{{ pre_command|safe }}
+{% endfor %}
+RUN rm -rf ${INTEL_OPENVINO_DIR}/.distribution && mkdir ${INTEL_OPENVINO_DIR}/.distribution && \
+    touch ${INTEL_OPENVINO_DIR}/.distribution/docker
+# -----------------
+FROM ubuntu:18.04 AS ov_base
+
+LABEL description="This is the {{ distribution }} image for {{ product_name }} on Ubuntu 18.04 LTS"
+LABEL vendor="Intel Corporation"
+
+USER root
+WORKDIR /
+
+SHELL ["/bin/bash", "-xo", "pipefail", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Creating user openvino and adding it to groups "video" and "users" to use GPU and VPU
+RUN useradd -ms /bin/bash -G video,users openvino && \
+    chown openvino -R /home/openvino
+
+RUN mkdir /opt/intel
+
+ENV INTEL_OPENVINO_DIR /opt/intel/openvino
+
+COPY --from=base /opt/intel /opt/intel
+
+WORKDIR /thirdparty
+
+ARG INSTALL_SOURCES="no"
+
+{% if build_id < '2021.3' %}
+{% if 'runtime' == distribution %}
+ARG DEPS="tzdata \
+          curl \
+          libgl1 \
+          libtinfo5"
+ARG LGPL_DEPS=libgtk-3-0
+{% elif 'dev' == distribution or 'dev_no_samples' == distribution %}
+ARG DEPS="tzdata \
+          curl \
+          libgl1 \
+          libtinfo5"
+ARG LGPL_DEPS="g++ \
+               gcc \
+               libc6-dev \
+               libgtk-3-0"
+{% else %}
+ARG DEPS="tzdata \
+          curl \
+          libgl1 \
+          libtinfo5 \
+          libopenexr22 \
+          flex \
+          vainfo"
+ARG LGPL_DEPS="g++ \
+               gcc \
+               libc6-dev \
+               libgtk-3-0 \
+               libgstreamer1.0-0 \
+               gstreamer1.0-plugins-base \
+               gstreamer1.0-plugins-good \
+               gstreamer1.0-plugins-bad \
+               gstreamer1.0-vaapi \
+               ffmpeg \
+               libgl-dev \
+               libtag-extras1 \
+               libfaac0 \
+               python3-gi \
+               libfluidsynth1 \
+               libnettle6 \
+               gstreamer1.0-plugins-ugly \
+               gstreamer1.0-alsa \
+               libglib2.0-dev \
+               gstreamer1.0-tools"
+{% endif %}
+{% else %}
+ARG DEPS="tzdata \
+          curl"
+{% if 'runtime' == distribution %}
+ARG LGPL_DEPS=
+ARG INSTALL_PACKAGES="-c=opencv_req -c=python -c=cl_compiler"
+{% elif 'dev' == distribution or 'dev_no_samples' == distribution %}
+ARG LGPL_DEPS="g++ \
+               gcc \
+               libc6-dev"
+ARG INSTALL_PACKAGES="-c=opencv_req -c=python -c=cl_compiler"
+{% else %}
+ARG LGPL_DEPS="g++ \
+               gcc \
+               libc6-dev"
+ARG INSTALL_PACKAGES="-c=opencv_req -c=python -c=opencv_opt -c=dlstreamer -c=cl_compiler"
+{% endif %}
+{% endif %}
+
+# hadolint ignore=DL3008
+RUN apt-get update && \
+    dpkg --get-selections | grep -v deinstall | awk '{print $1}' > base_packages.txt  && \
+    apt-get install -y --no-install-recommends ${DEPS} && \
+    rm -rf /var/lib/apt/lists/*
+
+{% if build_id < '2021.3' %}
+# hadolint ignore=DL3008
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ${LGPL_DEPS} && \
+    if [ "$INSTALL_SOURCES" = "yes" ]; then \
+      sed -Ei 's/# deb-src /deb-src /' /etc/apt/sources.list && \
+      apt-get update && \
+	  dpkg --get-selections | grep -v deinstall | awk '{print $1}' > all_packages.txt && \
+	  grep -v -f base_packages.txt all_packages.txt | while read line; do \
+	  package=`echo $line`; \
+	  name=(${package//:/ }); \
+      grep -l GPL /usr/share/doc/${name[0]}/copyright; \
+      exit_status=$?; \
+	  if [ $exit_status -eq 0 ]; then \
+	    apt-get source -q --download-only $package;  \
+	  fi \
+      done && \
+      echo "Download source for `ls | wc -l` third-party packages: `du -sh`"; fi && \
+    rm -rf /var/lib/apt/lists/*
+{% else %}
+# hadolint ignore=DL3008, SC2012
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ${LGPL_DEPS} && \
+    ${INTEL_OPENVINO_DIR}/install_dependencies/install_openvino_dependencies.sh -y ${INSTALL_PACKAGES} && \
+    if [ "$INSTALL_SOURCES" = "yes" ]; then \
+      sed -Ei 's/# deb-src /deb-src /' /etc/apt/sources.list && \
+      apt-get update && \
+	  dpkg --get-selections | grep -v deinstall | awk '{print $1}' > all_packages.txt && \
+	  grep -v -f base_packages.txt all_packages.txt | while read line; do \
+	  package=$(echo $line); \
+	  name=(${package//:/ }); \
+      grep -l GPL /usr/share/doc/${name[0]}/copyright; \
+      exit_status=$?; \
+	  if [ $exit_status -eq 0 ]; then \
+	    apt-get source -q --download-only $package;  \
+	  fi \
+      done && \
+      echo "Download source for $(ls | wc -l) third-party packages: $(du -sh)"; fi && \
+    rm /usr/lib/python3.*/lib-dynload/readline.cpython-3*-gnu.so && rm -rf /var/lib/apt/lists/*
+{% endif %}
+
+WORKDIR ${INTEL_OPENVINO_DIR}/licensing
+RUN if [ "$INSTALL_SOURCES" = "no" ]; then \
+        echo "This image doesn't contain source for 3d party components under LGPL/GPL licenses. Please use tag <YYYY.U_src> to pull the image with downloaded sources." > DockerImage_readme.txt ; \
+    fi
+
+{% for command in commands %}
+{{ command|safe }}
+{% endfor %}
+
+# Post-installation cleanup and setting up OpenVINO environment variables
+RUN if [ -f "${INTEL_OPENVINO_DIR}"/bin/setupvars.sh ]; then \
+        printf "\nexport TBB_DIR=\${INTEL_OPENVINO_DIR}/deployment_tools/inference_engine/external/tbb/cmake\n" >> ${INTEL_OPENVINO_DIR}/bin/setupvars.sh; \
+        printf "\nsource \${INTEL_OPENVINO_DIR}/bin/setupvars.sh\n" >> /home/openvino/.bashrc; \
+        printf "\nsource \${INTEL_OPENVINO_DIR}/bin/setupvars.sh\n" >> /root/.bashrc; \
+    fi; \
+    if [ -d "${INTEL_OPENVINO_DIR}"/opt/intel/mediasdk ]; then \
+        ln --symbolic "${INTEL_OPENVINO_DIR}"/opt/intel/mediasdk/ /opt/intel/mediasdk || true; \
+        printf "\nexport LIBVA_DRIVER_NAME=iHD \nexport LIBVA_DRIVERS_PATH=\${INTEL_OPENVINO_DIR}/opt/intel/mediasdk/lib64/ \nexport GST_VAAPI_ALL_DRIVERS=1 \nexport LIBRARY_PATH=\${INTEL_OPENVINO_DIR}/opt/intel/mediasdk/lib64/:\$LIBRARY_PATH \nexport LD_LIBRARY_PATH=\${INTEL_OPENVINO_DIR}/opt/intel/mediasdk/lib64/:\$LD_LIBRARY_PATH \n" >> /home/openvino/.bashrc; \
+        printf "\nexport LIBVA_DRIVER_NAME=iHD \nexport LIBVA_DRIVERS_PATH=\${INTEL_OPENVINO_DIR}/opt/intel/mediasdk/lib64/ \nexport GST_VAAPI_ALL_DRIVERS=1 \nexport LIBRARY_PATH=\${INTEL_OPENVINO_DIR}/opt/intel/mediasdk/lib64/:\$LIBRARY_PATH \nexport LD_LIBRARY_PATH=\${INTEL_OPENVINO_DIR}/opt/intel/mediasdk/lib64/:\$LD_LIBRARY_PATH \n" >> /root/.bashrc; \
+    fi;
+
+USER openvino
+WORKDIR ${INTEL_OPENVINO_DIR}
+ENV DEBIAN_FRONTEND=noninteractive
+
+CMD ["/bin/bash"]
+
+# Setup custom layers below
+{% for layer in layers %}
+{{ layer|safe }}
+{% endfor %}
