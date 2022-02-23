@@ -1,5 +1,7 @@
-# Intel Neural Compute Stick 2 Docker Instructions
+# Intel Neural Compute Stick 2 Docker Instructions  
+
 This guide describes how to get up and running with the OpenVINO toolkit using docker.
+
 ---
 
 ## Installing Docker
