@@ -67,3 +67,22 @@ The following link downloads the GoogleNet-v1, optimizes it, and runs it on the 
 Source: https://docs.openvino.ai/latest/openvino_inference_engine_tools_benchmark_tool_README.html
 
 ---
+
+## Runnning in WSL 2
+Install usbipd-win on your Windows machine from: https://github.com/dorssel/usbipd-win/releases
+
+In your WSL distro run:  
+`sudo apt install linux-tools-5.4.0-77-generic hwdata`  
+and  
+`sudo update-alternatives --install /usr/local/bin/usbip usbip /usr/lib/linux-tools/5.4.0-77-generic/usbip 20`  
+
+In a Windows Command Prompt run:  
+`usbipd wsl list`  
+and take note of the Intel NCS2 usb bus id and run:  
+`usbipd wsl attach --busid <busid>`
+
+Now you should be able to run `lsusb` in your WSL distro and see the Intel NCS2.
+
+Source: https://devblogs.microsoft.com/commandline/connecting-usb-devices-to-wsl/
+
+---
