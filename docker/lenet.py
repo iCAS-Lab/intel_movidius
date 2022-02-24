@@ -255,7 +255,7 @@ ir_path = Path(model_path).with_suffix(".xml")
 # Construct the command for Model Optimizer
 mo_command = f"""python3 /opt/intel/openvino_2021.4.752/deployment_tools/model_optimizer/mo.py
                  --input_model "{model_path}"
-                 --input_shape "{list(img_shape)}"
+                 --input_shape "[1, 28, 28, 1]"
                  --data_type FP16
                  --output_dir "{model_path.parent}"
                  """
