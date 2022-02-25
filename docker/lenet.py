@@ -271,9 +271,21 @@ input_key = list(exec_net.input_info)[0]
 output_key = list(exec_net.outputs.keys())[0]
 network_input_shape = exec_net.input_info[input_key].tensor_desc.dims
 
+num_samples = len(y_test)
+total_time = 0
+true_results = 0
 # grab a sample
-print(y_test[0])
-sample = np.expand_dims(np.squeeze(x_test[0]), 0)
-result = exec_net.infer(inputs={input_key: sample})[output_key]
+for i in range(0, num_samples):
+    sample = np.expand_dims(np.squeeze(x_test[i]), 0)
+    start_time = time.perf_counter()
+    result = exec_net.infer(inputs={input_key: sample})[output_key]
+    end_time = time.perf_counter()
+    total_time += end_time - start_time
+    if i % 500 == 0:
+        time.sleep(3)
+    if np.argmax(result) == np.argmax(y_test[i]):
+        true_results +=1
+    print(i)
 
-print(result)
+print('Average inference time: '+str(total_time/num_samples))
+print('Accuracy results: '+str(true_results/num_samples))
