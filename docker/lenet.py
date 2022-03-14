@@ -8,6 +8,9 @@ import time
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.utils import to_categorical
+from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
+from pathlib import Path
+from openvino.inference_engine import IECore
 import tensorflow_datasets as tfds
 ################################################################################
 # Clean up settings
@@ -16,6 +19,7 @@ REMOVE_DATA = True
 TRAIN_NEW_MODEL = True
 USE_GPUS = False
 N_GPUS = 4
+TO_FLOAT = True
 ################################################################################
 # GLOBAL VARS
 DS_NAME = 'mnist'
@@ -68,7 +72,11 @@ else:
 # Helper Functions
 def normalize_img(image, label):
     """Normalizes images: `uint8` -> `float32`."""
-    return tf.cast(image, tf.float32) / 255., label
+    global TO_FLOAT
+    if TO_FLOAT:
+        return tf.cast(image, tf.float32) / 255., label
+    else:
+        return tf.cast(image, tf.int8), label
 
 def preprocess_ds(a_ds, info, a_split, eval_flag=False):
     """Normalize images, shuffle, and prep datasets."""
@@ -205,11 +213,6 @@ print('EVALUATION LOSS: {}, EVALUATION ACC: {}'.format(loss,acc))
 saved_model = tf.keras.models.load_model('/root/models/lenet.h5')
 tf.saved_model.save(saved_model,'lenet')
 ################################################################################
-# Create graph file
-import tensorflow as tf
-from tensorflow import keras
-from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2
-import numpy as np
 #path of the directory where you want to save your model
 frozen_out_path = './'
 # name of the .pb file
@@ -236,32 +239,23 @@ tf.io.write_graph(graph_or_graph_def=frozen_func.graph,
                   logdir=frozen_out_path,
                   name=f"{frozen_graph_filename}.pb",
                   as_text=False)
-
-input("LOG --> Waiting for graph to be written")
 ################################################################################
-import time
-from pathlib import Path
-
-import cv2
-#import matplotlib.pyplot as plt
-import numpy as np
-#from IPython.display import Markdown
-from openvino.inference_engine import IECore
-
 # The paths of the source and converted models
 model_path = Path("/root/models/inference_graph.pb")
 ir_path = Path(model_path).with_suffix(".xml")
 
 # Construct the command for Model Optimizer
-mo_command = f"""python3 /opt/intel/openvino_2021.4.752/deployment_tools/model_optimizer/mo.py
+mo_command = f"""python3 /opt/intel/openvino_2021.4.752/deployment_tools/model_optimizer/mo_tf.py
                  --input_model "{model_path}"
                  --input_shape "[1, 28, 28, 1]"
-                 --data_type FP16
+                 --data_type FP32
                  --output_dir "{model_path.parent}"
                  """
 mo_command = " ".join(mo_command.split())
-print(mo_command)
-input("Waiting for mo to run...")
+print('-'*20)
+print('LOG --> Running Model Optimizer...')
+os.system(str(mo_command))
+print('-'*20)
 
 ie = IECore()
 net = ie.read_network(model=ir_path, weights=ir_path.with_suffix(".bin"))
@@ -271,7 +265,7 @@ input_key = list(exec_net.input_info)[0]
 output_key = list(exec_net.outputs.keys())[0]
 network_input_shape = exec_net.input_info[input_key].tensor_desc.dims
 
-num_samples = len(y_test)
+num_samples = 5000
 total_time = 0
 true_results = 0
 # grab a sample
