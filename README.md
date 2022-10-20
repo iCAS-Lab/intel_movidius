@@ -43,8 +43,8 @@ To pass in the device you simply need to pass in the device inside of the `docke
 
 *For example*:
 
-Use:
-`docker run -it --device /dev/dri:/dev/dri --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb openvino/ubuntu20_data_dev:latest`  
+Use the following command exactly to use with NCS2:
+`docker run -it -u 0 --name myriad --hostname openvinomyriad --device /dev/dri:/dev/dri --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb openvino/ubuntu20_data_dev:latest`  
 to run the container and pass in the Intel NCS2.
 
 ***Note: Using the `--rm` flag when running the container deletes the container after exiting the run.***
@@ -54,15 +54,17 @@ Source: https://hub.docker.com/r/openvino/ubuntu20_data_dev
 ---
 
 ## Test the OpenVINO Container
-The following link downloads the GoogleNet-v1, optimizes it, and runs it on the Intel NCS2.
+The following link downloads the GoogleNet-v1, optimizes it, and runs it on the Intel NCS2. 
 
-1. `cd /opt/intel/openvino_2021.*/deployment_tools/open_model_zoo/tools/downloader`
+1. `apt update -y && apt upgrade -y`
 
-2. `python3 downloader.py --name googlenet-v1 -o ~`
+2. `cd /opt/intel/openvino_2021.*/deployment_tools/open_model_zoo/tools/downloader`
 
-3. `python3 /opt/intel/openvino_2021.*/deployment_tools/model_optimizer/mo.py --input_model ~/public/googlenet-v1/googlenet-v1.caffemodel --data_type FP32 --output_dir ~`
+3. `python3 downloader.py --name googlenet-v1 -o ~`
 
-4. `python3 benchmark_app.py -m ~/googlenet-v1.xml -d MYRIAD -api async -i /opt/intel/openvino_2021.*/deployment_tools/demo/car.png -b 1`
+4. `python3 /opt/intel/openvino_2021.*/deployment_tools/model_optimizer/mo.py --input_model ~/public/googlenet-v1/googlenet-v1.caffemodel --data_type FP32 --output_dir ~`
+
+5. `python3 /opt/intel/openvino_2021/deployment_tools/tools/benchmark_tool/benchmark_app.py -m ~/googlenet-v1.xml -d MYRIAD -api async -i /opt/intel/openvino_2021.*/deployment_tools/demo/car.png -b 1`
 
 ***NOTE: You will see some long waiting or pinging messages. The model is running on the stick, you may just have to wait.***
 
