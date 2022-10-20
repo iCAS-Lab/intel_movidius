@@ -43,7 +43,7 @@ To pass in the device you simply need to pass in the device inside of the `docke
 
 *For example*:
 
-Use the following command exactly to use with NCS2:
+Use the following command exactly to use with NCS2:  
 `docker run -it -u 0 --name myriad --hostname openvinomyriad --device /dev/dri:/dev/dri --device-cgroup-rule='c 189:* rmw' -v /dev/bus/usb:/dev/bus/usb openvino/ubuntu20_data_dev:latest`  
 to run the container and pass in the Intel NCS2.
 
