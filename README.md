@@ -70,6 +70,10 @@ The following link downloads the GoogleNet-v1, optimizes it, and runs it on the 
 Source: https://docs.openvino.ai/latest/openvino_inference_engine_tools_benchmark_tool_README.html
 
 ---
+## Run and Convert Your Own Model
+To see an example of how to implement your own models, convert them for NCS2, and performing inference refer to [lenet.py](docker/lenet.py).  
+
+---
 
 ## Runnning in WSL 2
 Install usbipd-win on your Windows machine from: https://github.com/dorssel/usbipd-win/releases
